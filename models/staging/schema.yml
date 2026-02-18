@@ -1,0 +1,110 @@
+version: 2
+
+models:
+  - name: stg_conditions
+    description: >
+      Staging model selecting relevant fields from core__condition for cancer cohort analysis.
+      Filters out records with no normalized code. Grain: one row per condition record
+      (person_id + claim_id + diagnosis position).
+    columns:
+      - name: person_id
+        description: "Unique identifier for the patient."
+        tests:
+          - not_null
+      - name: claim_id
+        description: "Claim associated with this condition record."
+      - name: condition_rank
+        description: "Diagnosis position on the claim (1 = primary diagnosis)."
+      - name: source_code_type
+        description: "Coding system of the original source code (e.g. ICD-10-CM)."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/code-type
+      - name: source_code
+        description: "Original diagnosis code as submitted on the claim."
+      - name: source_description
+        description: "Human-readable description of the source code."
+      - name: normalized_code_type
+        description: "Coding system of the standardized code after Tuva normalization."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/code-type
+      - name: normalized_code
+        description: "Standardized ICD-10-CM diagnosis code."
+        tests:
+          - not_null
+        meta:
+          terminology: https://thetuvaproject.com/terminology/icd-10-cm
+          terminology_note: >
+            ICD-10-CM codes are too large to load as a seed and are instead loaded
+            from public cloud storage for supported adapters.
+      - name: normalized_description
+        description: "Human-readable description of the normalized code."
+      - name: recorded_date
+        description: "Date the condition was recorded on the claim."
+      - name: condition_type
+        description: "Source of the condition record: claim or clinical."
+
+  - name: stg_medical_claims
+    description: >
+      Staging model selecting relevant fields from core__medical_claim and mapping
+      Tuva's service_category_1 to a clean care_setting label.
+      Grain: one row per claim line (medical_claim_id).
+    columns:
+      - name: medical_claim_id
+        description: "Unique identifier for the claim line."
+        tests:
+          - not_null
+          - unique
+      - name: claim_id
+        description: "Parent claim identifier (multiple lines can share a claim_id)."
+        tests:
+          - not_null
+      - name: claim_line_number
+        description: "Line number within the claim."
+      - name: person_id
+        description: "Unique identifier for the patient."
+        tests:
+          - not_null
+      - name: claim_type
+        description: "Type of claim: professional, institutional, or pharmacy."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/claim-type
+      - name: claim_start_date
+        description: "Start date of the claim."
+      - name: claim_end_date
+        description: "End date of the claim."
+      - name: service_category_1
+        description: >
+          Tuva-derived service category (inpatient, outpatient, office-based, ancillary, other).
+          Determined by Tuva from bill_type_code and place_of_service_code.
+        meta:
+          terminology: https://thetuvaproject.com/terminology/service-category
+      - name: service_category_2
+        description: "Tuva-derived sub-category (e.g. emergency department, acute inpatient)."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/service-category
+      - name: place_of_service_code
+        description: "CMS place of service code indicating where care was delivered."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/place-of-service
+      - name: bill_type_code
+        description: "Bill type code for institutional claims (e.g. 111 = inpatient)."
+      - name: paid_amount
+        description: "Amount paid by the payer for this claim line."
+      - name: allowed_amount
+        description: "Allowed amount for this claim line."
+      - name: charge_amount
+        description: "Amount charged (billed) for this claim line."
+      - name: payer
+        description: "Name of the payer (insurance company)."
+      - name: plan
+        description: "Insurance plan name."
+      - name: data_source
+        description: "Source system identifier."
+      - name: care_setting
+        description: >
+          Standardized care setting derived from service_category_1.
+          Values: Inpatient, Outpatient, Office Visit, Ancillary, Other.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Inpatient', 'Outpatient', 'Office Visit', 'Ancillary', 'Other']

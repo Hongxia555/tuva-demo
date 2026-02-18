@@ -1,0 +1,124 @@
+version: 2
+
+models:
+  - name: int_cancer_patients
+    description: >
+      Cancer patient cohort at patient × cancer_type grain. ICD-10-CM codes C00–C96
+      identify patients with primary malignant neoplasms. C77–C79 (secondary/metastatic)
+      are captured in the has_metastatic flag rather than as a separate cancer type,
+      avoiding double-counting while preserving Stage 4 signal.
+      A patient with Breast Cancer and Lymphoma will have 2 rows.
+    columns:
+      - name: person_id
+        description: "Unique identifier for the cancer patient."
+        tests:
+          - not_null
+      - name: cancer_type
+        description: >
+          Grouped cancer type derived from ICD-10-CM 3-character prefix.
+          Classification logic is centralized here; all downstream models inherit this field.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Breast Cancer'
+                - 'Lung Cancer'
+                - 'Colorectal Cancer'
+                - 'Prostate Cancer'
+                - 'Lymphoma'
+                - 'Leukemia'
+                - 'Thyroid Cancer'
+                - 'Pancreatic Cancer'
+                - 'Urologic Cancer'
+                - 'Gynecologic Cancer'
+                - 'Other Cancer'
+      - name: first_diagnosis_date
+        description: >
+          Earliest date a condition record with this cancer type appeared for this patient.
+          Used to establish when the patient entered the cancer cohort.
+      - name: last_diagnosis_date
+        description: >
+          Most recent date a condition record with this cancer type appeared.
+          Patients with last_diagnosis_date significantly earlier than dataset end
+          may have resolved or undocumented disease.
+      - name: claim_count
+        description: >
+          Number of condition records with this cancer type for this patient.
+          Used in dim_cancer_patients to determine the primary_cancer_type
+          (the type with the most claims).
+      - name: primary_dx_claim_count
+        description: >
+          Subset of claim_count where condition_rank = 1 (cancer was the primary diagnosis).
+          A value of 0 suggests the cancer is a comorbidity rather than the main
+          driver of utilization.
+      - name: has_metastatic
+        description: >
+          1 if this patient has any C77–C79 secondary/metastatic code on any claim.
+          Indicates documented disease spread (Stage 4 / advanced disease).
+          This flag is the same for all rows belonging to the same patient.
+
+  - name: int_cancer_claims
+    description: >
+      All medical claim lines for cancer patients. Grain: one row per claim line
+      (medical_claim_id). Includes ALL claims for the patient — not only claims with
+      cancer diagnosis codes — to capture the total cost of care.
+      Primary cancer type is inherited from int_cancer_patients (most frequently coded type).
+    columns:
+      - name: medical_claim_id
+        description: "Unique identifier for the claim line."
+        tests:
+          - not_null
+          - unique
+      - name: claim_id
+        description: "Parent claim identifier."
+        tests:
+          - not_null
+      - name: claim_line_number
+        description: "Line number within the claim."
+      - name: person_id
+        description: "Patient identifier — every row must belong to a known cancer patient."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('int_cancer_patients')
+              field: person_id
+      - name: primary_cancer_type
+        description: "Most frequently coded cancer type for this patient (from int_cancer_patients)."
+        tests:
+          - not_null
+      - name: has_metastatic
+        description: "1 if this patient has documented metastatic disease."
+      - name: claim_type
+        description: "professional, institutional, or pharmacy."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/claim-type
+      - name: care_setting
+        description: "Care setting derived from service_category_1 (Inpatient, Outpatient, Office Visit, Ancillary, Other)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Inpatient', 'Outpatient', 'Office Visit', 'Ancillary', 'Other']
+      - name: service_category_1
+        description: "Tuva-derived service category."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/service-category
+      - name: service_category_2
+        description: "Tuva-derived service sub-category."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/service-category
+      - name: claim_start_date
+        description: "Start date of the claim."
+      - name: claim_end_date
+        description: "End date of the claim."
+      - name: paid_amount
+        description: "Amount paid by the payer for this claim line."
+      - name: allowed_amount
+        description: "Allowed amount for this claim line."
+      - name: charge_amount
+        description: "Amount charged (billed) for this claim line."
+      - name: payer
+        description: "Name of the payer."
+      - name: plan
+        description: "Insurance plan name."
+      - name: data_source
+        description: "Source system identifier."

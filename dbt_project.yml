@@ -18,6 +18,18 @@ vars:
   # Setting the reporting period to date needed for demo data
   quality_measures_period_end: "2018-12-31"
 
+models:
+  the_tuva_project_demo:
+    staging:
+      +materialized: view
+      +schema: oncology
+    intermediate:
+      +materialized: table
+      +schema: oncology
+    marts:
+      +materialized: table
+      +schema: oncology
+
 model-paths: ["models"]
 analysis-paths: ["analyses"]
 test-paths: ["tests"]
