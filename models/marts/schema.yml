@@ -1,0 +1,223 @@
+version: 2
+
+models:
+  - name: dim_cancer_patients
+    description: >
+      Patient dimension table for the cancer cohort. One row per cancer patient.
+      Combines demographics, cancer classification, cost summary, and treatment state.
+      Spend buckets are data-driven from actual population percentiles:
+      p25=$7,119 | p75=$25,535 | p90=$40,725.
+    columns:
+      - name: person_id
+        description: "Unique identifier for the cancer patient."
+        tests:
+          - not_null
+          - unique
+      - name: sex
+        description: "Patient sex."
+      - name: race
+        description: "Patient race."
+      - name: age
+        description: "Patient age as of the end of the dataset period."
+      - name: age_group
+        description: "Patient age group (from Tuva core__patient)."
+      - name: death_flag
+        description: "1 if the patient is deceased in the dataset."
+      - name: primary_cancer_type
+        description: >
+          The cancer type with the most condition records for this patient.
+          Used as the primary classification when a patient has multiple cancer types.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Breast Cancer'
+                - 'Lung Cancer'
+                - 'Colorectal Cancer'
+                - 'Prostate Cancer'
+                - 'Lymphoma'
+                - 'Leukemia'
+                - 'Thyroid Cancer'
+                - 'Pancreatic Cancer'
+                - 'Urologic Cancer'
+                - 'Gynecologic Cancer'
+                - 'Other Cancer'
+      - name: cancer_type_count
+        description: "Number of distinct cancer types coded for this patient."
+      - name: has_metastatic
+        description: "1 if patient has any C77-C79 secondary/metastatic code (Stage 4 / disease spread)."
+      - name: first_diagnosis_date
+        description: "Earliest cancer diagnosis date across all cancer types."
+      - name: has_breast_cancer
+        description: "1 if patient has a Breast Cancer (C50.x) diagnosis."
+      - name: has_lung_cancer
+        description: "1 if patient has a Lung Cancer (C34.x) diagnosis."
+      - name: has_colorectal_cancer
+        description: "1 if patient has a Colorectal Cancer (C18-C20) diagnosis."
+      - name: has_prostate_cancer
+        description: "1 if patient has a Prostate Cancer (C61.x) diagnosis."
+      - name: has_lymphoma
+        description: "1 if patient has a Lymphoma (C81-C86, C88) diagnosis."
+      - name: has_leukemia
+        description: "1 if patient has a Leukemia (C91-C95) diagnosis."
+      - name: has_thyroid_cancer
+        description: "1 if patient has a Thyroid Cancer (C73-C74) diagnosis."
+      - name: has_pancreatic_cancer
+        description: "1 if patient has a Pancreatic Cancer (C25.x) diagnosis."
+      - name: has_urologic_cancer
+        description: "1 if patient has a Urologic Cancer (C64, C67) diagnosis."
+      - name: has_gynecologic_cancer
+        description: "1 if patient has a Gynecologic Cancer (C51-C58) diagnosis."
+      - name: has_other_cancer
+        description: "1 if patient has a cancer type not covered by the named categories."
+      - name: total_paid_amount
+        description: "Sum of paid_amount across all medical claims for this patient."
+        tests:
+          - not_null
+      - name: total_allowed_amount
+        description: "Sum of allowed_amount across all medical claims for this patient."
+      - name: total_claims
+        description: "Total number of distinct claims for this patient."
+      - name: last_claim_date
+        description: "Date of the most recent claim for this patient."
+      - name: treatment_status
+        description: >
+          Active = had a medical claim in the last 6 months of the dataset period.
+          Historical = most recent claim is more than 6 months before dataset end.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Active', 'Historical']
+      - name: spend_bucket
+        description: >
+          Spend tier based on data-driven percentile thresholds of total_paid_amount:
+          Low (<$7,119) | Moderate ($7,119-$25,535) | High ($25,535-$40,725) | Very High (>$40,725).
+        tests:
+          - not_null
+
+  - name: fct_cancer_claims
+    description: >
+      Claim-line fact table for the cancer population. One row per claim line.
+      Preserves full event history for ad-hoc downstream aggregation.
+      Enriched with patient-level attributes from dim_cancer_patients.
+    columns:
+      - name: medical_claim_id
+        description: "Unique identifier for the claim line."
+        tests:
+          - not_null
+          - unique
+      - name: claim_id
+        description: "Parent claim identifier."
+        tests:
+          - not_null
+      - name: claim_line_number
+        description: "Line number within the claim."
+      - name: person_id
+        description: "Patient identifier — must exist in dim_cancer_patients."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_cancer_patients')
+              field: person_id
+      - name: primary_cancer_type
+        description: "Primary cancer type for this patient."
+      - name: has_metastatic
+        description: "1 if this patient has documented metastatic disease."
+      - name: claim_type
+        description: "professional, institutional, or pharmacy."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/claim-type
+      - name: care_setting
+        description: "Care setting (Inpatient, Outpatient, Office Visit, Ancillary, Other)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Inpatient', 'Outpatient', 'Office Visit', 'Ancillary', 'Other']
+      - name: service_category_1
+        description: "Tuva-derived service category."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/service-category
+      - name: service_category_2
+        description: "Tuva-derived service sub-category."
+        meta:
+          terminology: https://thetuvaproject.com/terminology/service-category
+      - name: claim_start_date
+        description: "Start date of the claim."
+      - name: claim_end_date
+        description: "End date of the claim."
+      - name: paid_amount
+        description: "Amount paid for this claim line."
+      - name: allowed_amount
+        description: "Allowed amount for this claim line."
+      - name: charge_amount
+        description: "Amount charged for this claim line."
+      - name: payer
+        description: "Name of the payer."
+      - name: plan
+        description: "Insurance plan name."
+      - name: data_source
+        description: "Source system identifier."
+      - name: age
+        description: "Patient age."
+      - name: age_group
+        description: "Patient age group."
+      - name: sex
+        description: "Patient sex."
+      - name: race
+        description: "Patient race."
+      - name: spend_bucket
+        description: "Patient spend tier from dim_cancer_patients."
+      - name: treatment_status
+        description: "Active or Historical from dim_cancer_patients."
+      - name: cancer_type_count
+        description: "Number of distinct cancer types for this patient."
+
+  - name: cancer_cost_by_setting
+    description: >
+      Aggregate cost breakdown by care setting for the cancer population.
+      One row per care setting. Answers: where is the money going?
+    columns:
+      - name: care_setting
+        description: "Care setting label (Inpatient, Outpatient, Office Visit, Ancillary, Other)."
+        tests:
+          - not_null
+          - unique
+      - name: service_category_1
+        description: "Tuva service_category_1 value mapped to this care_setting."
+      - name: total_paid_amount
+        description: "Total paid amount across all cancer patients in this care setting."
+      - name: total_allowed_amount
+        description: "Total allowed amount across all cancer patients in this care setting."
+      - name: patient_count
+        description: "Number of distinct cancer patients with claims in this care setting."
+      - name: claim_count
+        description: "Number of distinct claims in this care setting."
+      - name: pct_of_total_spend
+        description: "This care setting's share of total cancer paid spend (0–100)."
+      - name: avg_paid_per_patient
+        description: "Average paid amount per cancer patient for this care setting."
+
+  - name: cancer_segments
+    description: >
+      Cross-tabulation of primary_cancer_type and spend_bucket for the cancer population.
+      One row per cancer type × spend bucket combination. Shows which cancer types
+      drive the most cost and how spend is distributed within each type.
+    columns:
+      - name: primary_cancer_type
+        description: "Primary cancer type."
+        tests:
+          - not_null
+      - name: spend_bucket
+        description: "Spend tier (Low / Moderate / High / Very High)."
+        tests:
+          - not_null
+      - name: patient_count
+        description: "Number of patients in this cancer type × spend bucket cell."
+      - name: total_paid_amount
+        description: "Total paid amount for patients in this segment."
+      - name: avg_paid_per_patient
+        description: "Average total paid per patient in this segment."
+      - name: pct_of_cancer_population
+        description: "This segment's share of the total cancer patient population (0–100)."
+      - name: pct_of_total_cancer_spend
+        description: "This segment's share of total cancer paid spend (0–100)."
